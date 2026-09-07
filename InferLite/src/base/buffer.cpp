@@ -1,0 +1,91 @@
+#include "base/buffer.h"
+#include <cuda_runtime_api.h>
+#include <glog/logging.h>
+#include <cstring>
+
+namespace base {
+Buffer::Buffer(size_t byte_size, std::shared_ptr<DeviceAllocator> allocator, void* ptr,
+               bool use_external)
+    : byte_size_(byte_size),
+      allocator_(allocator),
+      ptr_(ptr),
+      use_external_(use_external) {
+  if (!ptr_ && allocator_) {
+    device_type_ = allocator_->device_type();
+    use_external_ = false;
+    ptr_ = allocator_->allocate(byte_size);
+  }
+}
+
+Buffer::~Buffer() {
+  if (!use_external_) {
+    if (ptr_ && allocator_) {
+      allocator_->release(ptr_);
+      ptr_ = nullptr;
+    }
+  }
+}
+
+void* Buffer::ptr() {
+  return ptr_;
+}
+
+const void* Buffer::ptr() const {
+  return ptr_;
+}
+
+size_t Buffer::byte_size() const {
+  return byte_size_;
+}
+
+bool Buffer::allocate() {
+  if (allocator_ && byte_size_ != 0) {
+    use_external_ = false;
+    ptr_ = allocator_->allocate(byte_size_);
+    if (!ptr_) {
+      return false;
+    } else {
+      return true;
+    }
+  } else {
+    return false;
+  }
+}
+
+std::shared_ptr<DeviceAllocator> Buffer::allocator() const {
+  return allocator_;
+}
+
+// 把 src 的内容拷贝进当前 buffer,按两侧设备类型选择 memcpy 或 cudaMemcpy。
+void Buffer::copy_from(const Buffer* buffer) const {
+  CHECK(allocator_ != nullptr);
+  CHECK(buffer != nullptr && buffer->ptr_ != nullptr);
+
+  size_t dest_size = byte_size_;
+  size_t src_size = buffer->byte_size_;
+  size_t byte_size = src_size < dest_size ? src_size : dest_size;
+
+  const DeviceType& src_device = buffer->device_type();
+  const DeviceType& dest_device = this->device_type();
+  CHECK(src_device != DeviceType::kUnknown && dest_device != DeviceType::kUnknown);
+
+  if (src_device == DeviceType::kCPU && dest_device == DeviceType::kCPU) {
+    std::memcpy(this->ptr_, buffer->ptr_, byte_size);
+  } else if (src_device == DeviceType::kCPU && dest_device == DeviceType::kCUDA) {
+    cudaMemcpy(this->ptr_, buffer->ptr_, byte_size, cudaMemcpyHostToDevice);
+  } else if (src_device == DeviceType::kCUDA && dest_device == DeviceType::kCPU) {
+    cudaMemcpy(this->ptr_, buffer->ptr_, byte_size, cudaMemcpyDeviceToHost);
+  } else {
+    cudaMemcpy(this->ptr_, buffer->ptr_, byte_size, cudaMemcpyDeviceToDevice);
+  }
+}
+
+DeviceType Buffer::device_type() const {
+  return device_type_;
+}
+
+void Buffer::set_device_type(DeviceType device_type) {
+  device_type_ = device_type;
+}
+
+}  // namespace base
