@@ -27,7 +27,7 @@ tools/                  权重导出脚本
 huggingface-cli download Qwen/Qwen3-0.6B --local-dir Qwen3-0.6B
 
 python3 tools/export_qwen3.py \
-  --model_dir Qwen3-0.6B \
+  --model_dir ~/huggingface/Qwen3-0.6B \
   --output models/qwen0.6.bin
 # 分词器也要放进 models/
 cp Qwen3-0.6B/tokenizer.json models/

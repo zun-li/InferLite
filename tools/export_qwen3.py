@@ -31,11 +31,13 @@ EXPECTED_CONFIG = {
 }
 
 
-def load_safetensors_header(path):
-    """读取 safetensors 文件头,返回 (header, data_start)。
+def load_safetensors_header(path: Path) -> tuple[dict, int]:
+    """读取 safetensors 文件头，返回 (header, data_start)。
 
-    data_start 是张量数据区在文件中的起始偏移;每个张量的
-    data_offsets 是相对 data_start 的偏移。
+    header: 存放各模型层张量的 dtype、shape 和 data_offsets;
+    data_start: 张量数据区在 safetensors 文件中的起始偏移;
+    
+    每个张量的 data_offsets 是相对 data_start 的偏移。
     """
     with open(path, "rb") as f:
         header_len = struct.unpack("<Q", f.read(8))[0]
@@ -44,7 +46,7 @@ def load_safetensors_header(path):
     return header, 8 + header_len
 
 
-def read_tensor_fp32(path, info, data_start):
+def read_tensor_fp32(path: Path, info: dict, data_start: int) -> np.ndarray:
     """按 data_offsets 读取单个张量并转为 float32 一维数组。"""
     start, end = info["data_offsets"]
     with open(path, "rb") as f:
@@ -61,7 +63,7 @@ def read_tensor_fp32(path, info, data_start):
     raise ValueError(f"不支持的 safetensors 数据类型: {dtype}")
 
 
-def build_weight_keys(layer_num):
+def build_weight_keys(layer_num: int) -> list[str]:
     """按 C++ 消费顺序生成权重键列表(每组张量按层号 0..N 排列)。"""
     keys = []
     for i in range(layer_num):
