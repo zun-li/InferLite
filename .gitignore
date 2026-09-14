@@ -1,5 +1,21 @@
-.vscode/
-__pycache__/
+# 构建产物
 build/
+cmake-build-*/
+compile_commands.json
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# 模型权重与运行时数据
 models/
 *.bin
+*.safetensors
+
+# 编辑器与系统文件
+.vscode/*
+!.vscode/launch.json
+.idea/
+*.swp
+.DS_Store

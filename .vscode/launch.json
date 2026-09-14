@@ -1,0 +1,18 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "调试 export_qwen3.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/tools/export_qwen3.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "args": [
+                "--model_dir", "~/huggingface/Qwen3-0.6B",
+                "--output", "models/qwen0.6.bin",
+                "--max_seq_len", "4096"
+            ]
+        }
+    ]
+}
