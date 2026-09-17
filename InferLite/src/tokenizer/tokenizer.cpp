@@ -1,22 +1,16 @@
 #include "tokenizer/tokenizer.h"
 #include <glog/logging.h>
+#include <algorithm>
 #include <fstream>
 #include <unordered_map>
 #include "nlohmann/json.hpp"
 #include "tokenizer/unicode.h"
 namespace tokenizer {
 // GPT-2 风格的分词正则,与 Qwen3 tokenizer 的训练模式一致。
+// 官方 pattern 的 `\s+(?!\S)` 含前瞻断言,RE2 不支持,改用 `\s+(?:$|[^\S])`;
+// 两者的差异由 tiktoken::_encode_native 里的空白分片修正补齐。
 static const std::string PAT_STR =
     R"((?i:'s|'t|'re|'ve|'m|'ll|'d)|[^\r\n\p{L}\p{N}]?\p{L}+|\p{N}| ?[^\s\p{L}\p{N}]+[\r\n]*|\s*[\r\n]+|\s+(?:$|[^\S])|\s+)";
-
-// 词表 token 是 GPT-2 风格的字节展示形式(如空格显示为Ġ),编解码前做一次映射。
-static void replace_all(std::string& s, const std::string& from, const std::string& to) {
-  size_t pos = 0;
-  while ((pos = s.find(from, pos)) != std::string::npos) {
-    s.replace(pos, from.size(), to);
-    pos += to.size();
-  }
-}
 
 Tokenizer::Tokenizer(std::string token_model_path) {
   using json = nlohmann::json;
@@ -33,10 +27,12 @@ Tokenizer::Tokenizer(std::string token_model_path) {
 
   const auto& datas = data["added_tokens"];
   std::unordered_map<std::string, int> special_tokens;
+  int32_t max_token_id = -1;
   for (const auto& data1 : datas) {
     int id = data1["id"];
     std::string content = data1["content"];
     special_tokens.insert({content, id});
+    max_token_id = std::max(max_token_id, id);
   }
   CHECK(special_tokens.count("<|im_start|>") == 1 && special_tokens.count("<|im_end|>") == 1 &&
         special_tokens.count("<|endoftext|>") == 1)
@@ -56,27 +52,29 @@ Tokenizer::Tokenizer(std::string token_model_path) {
     }
     const int32_t id = v.value();
     encoder[key] = id;
+    max_token_id = std::max(max_token_id, id);
   }
 
   stop_token1_ = special_tokens["<|im_end|>"];
   stop_token2_ = special_tokens["<|endoftext|>"];
-  num_token_ = encoder.size() + special_tokens.size();
+  // 词表大小取最大 token id + 1,而不是两份词表大小相加:added_tokens 与
+  // model.vocab 的 id 可能重叠,相加会重复计数。
+  num_token_ = max_token_id + 1;
   tiktoken_ = std::make_unique<tiktoken::tiktoken>(std::move(encoder), std::move(special_tokens),
                                                    PAT_STR);
 }
 
 std::vector<int32_t> Tokenizer::encode(const std::string& sentence) const {
   CHECK(this->tiktoken_ != nullptr);
-  std::string s = sentence;
-  replace_all(s, " ", "Ġ");
-  return this->tiktoken_->encode(s);
+  // 词表键在构造函数里已经从 GPT-2 展示形式转成原始字节(空格就是 0x20),
+  // 这里直接编码原文即可,不能再把空格替换成 'Ġ'。
+  return this->tiktoken_->encode(sentence);
 }
 
 std::string Tokenizer::decode(const std::vector<int32_t>& token_ids) const {
   CHECK(this->tiktoken_ != nullptr);
-  std::string s = tiktoken_->decode(token_ids);
-  replace_all(s, "Ġ", " ");
-  return s;
+  // decoder_ 存的同样是原始字节,直接拼接即可,不需要把 'Ġ' 换回空格。
+  return this->tiktoken_->decode(token_ids);
 }
 
 bool Tokenizer::is_sentence_ending(int32_t token_id) const {

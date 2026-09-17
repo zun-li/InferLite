@@ -17,6 +17,8 @@ class Tokenizer {
 
   bool is_sentence_ending(int32_t token_id) const;
 
+  // 词表最大 token id + 1(本模型为 151669)。注意它不是模型 embedding/lm_head
+  // 的行数:权重里的 vocab_size 是补齐到 151936 的值,分配 logits 时要用后者。
   int32_t vocab_size() const;
 
  private:

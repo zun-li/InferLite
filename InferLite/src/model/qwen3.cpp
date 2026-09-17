@@ -12,19 +12,29 @@
 namespace model {
 
 void Qwen3Layers::set_stream(cudaStream_t stream) {
-  for (auto* layer : std::vector<op::Layer*>{add_layer_.get(), rope_layer_.get(),
-                                             swiglu_layer_.get(), mha_layer_.get(),
-                                             cls_layer_.get(), embedding_layer_.get()}) {
+  
+  // 整个模型共享的算子。
+  const std::shared_ptr<op::Layer> shared_layers[] = {
+    add_layer_, rope_layer_, swiglu_layer_, mha_layer_, cls_layer_, embedding_layer_
+  };
+  
+  for (const auto& layer : shared_layers) {
     if (layer) {
       layer->set_stream(stream);
     }
   }
-  for (auto* group :
-       std::vector<std::vector<std::shared_ptr<op::Layer>>*>{&wq_layers_, &wk_layers_, &wv_layers_,
-                                                             &wo_layers_, &w1_layers_, &w2_layers_,
-                                                             &w3_layers_, &rmsnorm_layers_}) {
-    for (auto& layer : *group) {
-      layer->set_stream(stream);
+
+  // 每层一份的算子。
+  const std::vector<std::shared_ptr<op::Layer>>* layer_groups[] = {
+      &wq_layers_, &wk_layers_, &wv_layers_, &wo_layers_,
+      &w1_layers_, &w2_layers_, &w3_layers_, &rmsnorm_layers_
+  };
+  
+  for (const auto* group : layer_groups) {
+    for (const auto& layer : *group) {
+      if (layer) {
+        layer->set_stream(stream);
+      }
     }
   }
 }
